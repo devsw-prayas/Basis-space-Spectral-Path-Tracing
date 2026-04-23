@@ -48,7 +48,7 @@ def checkEnv():
         print("research.plot   : OK ✓")
     except ImportError as e:
         print(f"Package Error  : {e} ✗")
-        print("Make sure you are running from the project root.")
+        print("Make sure you are running from the projectSo root.")
 
     print("\n═══════════════════════════════════════════════════════════════")
     if cuda_available:
