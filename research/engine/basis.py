@@ -29,46 +29,45 @@ class SpectralBasis(ABC):
 
     def buildCholesky(self):
         self.m_chol = torch.linalg.cholesky(self.m_gram)
+        # Precompute Whitened Basis for fast reconstruction: B_wht = L^-1 B_raw
+        self.m_basisWhitened = torch.linalg.solve_triangular(self.m_chol, self.m_basisRaw, upper=False)
+
+    def toWhitened(self, alpha_raw: Tensor) -> Tensor:
+        """Converts raw coefficients to whitened space: alpha_w = L^T alpha_raw"""
+        return (self.m_chol.T @ alpha_raw.unsqueeze(-1)).squeeze(-1)
+
+    def toRaw(self, alpha_w: Tensor) -> Tensor:
+        """Converts whitened coefficients to raw space: alpha_raw = L^-T alpha_w"""
+        return torch.linalg.solve_triangular(self.m_chol.T, alpha_w.unsqueeze(-1), upper=True).squeeze(-1)
 
     def project(self, spectrum: Tensor) -> Tensor:
-        B = self.m_basisRaw
-        w = self.m_domain.m_weights
-
-        if spectrum.device != B.device:
-            spectrum = spectrum.to(B.device)
-        if spectrum.dtype != B.dtype:
-            spectrum = spectrum.to(B.dtype)
-
-        b = ((B * w) @ spectrum).unsqueeze(1)   # [M, 1]
-
-        y     = torch.linalg.solve_triangular(self.m_chol,   b, upper=False)
+        """Returns standard raw coefficients (alpha_raw)."""
+        B, w = self.m_basisRaw, self.m_domain.m_weights
+        if spectrum.device != B.device: spectrum = spectrum.to(B.device)
+        if spectrum.dtype != B.dtype: spectrum = spectrum.to(B.dtype)
+        
+        b = (B * w) @ spectrum
+        y = torch.linalg.solve_triangular(self.m_chol, b.unsqueeze(-1), upper=False)
         alpha = torch.linalg.solve_triangular(self.m_chol.T, y, upper=True)
+        return alpha.squeeze(-1)
 
-        return alpha.squeeze(1)
+    def projectWhitened(self, spectrum: Tensor) -> Tensor:
+        """Projects directly into whitened space (alpha_w)."""
+        B, w = self.m_basisRaw, self.m_domain.m_weights
+        if spectrum.device != B.device: spectrum = spectrum.to(B.device)
+        if spectrum.dtype != B.dtype: spectrum = spectrum.to(B.dtype)
+        
+        b = (B * w) @ spectrum
+        y = torch.linalg.solve_triangular(self.m_chol, b.unsqueeze(-1), upper=False)
+        return y.squeeze(-1)
 
-    def projectBatch(self, spectra: Tensor) -> Tensor:
-        B = self.m_basisRaw
-        w = self.m_domain.m_weights
+    def reconstruct(self, alpha_raw: Tensor) -> Tensor:
+        """Reconstructs from raw coefficients: s = alpha_raw @ B_raw"""
+        return alpha_raw @ self.m_basisRaw
 
-        if spectra.device != B.device:
-            spectra = spectra.to(B.device)
-        if spectra.dtype != B.dtype:
-            spectra = spectra.to(B.dtype)
-
-        Bw    = B * w
-        rhs   = (Bw @ spectra.T).T
-        y     = torch.linalg.solve_triangular(self.m_chol,   rhs.T, upper=False)
-        alpha = torch.linalg.solve_triangular(self.m_chol.T, y,     upper=True)
-
-        return alpha.T
-
-    def reconstruct(self, coeffs: Tensor) -> Tensor:
-        B = self.m_basisRaw
-        if coeffs.device != B.device:
-            coeffs = coeffs.to(B.device)
-        if coeffs.dtype != B.dtype:
-            coeffs = coeffs.to(B.dtype)
-        return coeffs @ B
+    def reconstructWhitened(self, alpha_w: Tensor) -> Tensor:
+        """Reconstructs from whitened coefficients: s = alpha_w @ B_wht"""
+        return alpha_w @ self.m_basisWhitened
 
 
 class GHGSFBasis(SpectralBasis):

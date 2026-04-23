@@ -93,6 +93,17 @@ class PlotEngine:
         self.m_axes.scatter(xData, yData, label=label, color=color,
                             marker=marker, s=size, alpha=alpha, edgecolors='none')
 
+    def addHeatmap(self, data: Any, 
+                   xlabel: str = "X", ylabel: str = "Y",
+                   cmap: str = "magma", annot: bool = True,
+                   cbarLabel: str = "") -> Any:
+        import seaborn as sns
+        im = sns.heatmap(data, ax=self.m_axes, cmap=cmap, annot=annot, 
+                         fmt=".1f", cbar_kws={'label': cbarLabel})
+        self.m_axes.set_xlabel(xlabel, color=self.sColors['text'], fontsize=self.sFontSizes['label'])
+        self.m_axes.set_ylabel(ylabel, color=self.sColors['text'], fontsize=self.sFontSizes['label'])
+        return im
+
     def setTitle(self, title: str) -> None:
         self.m_axes.set_title(title, fontsize=self.sFontSizes['title'],
                                color=self.sColors['text'], pad=10)
@@ -138,22 +149,39 @@ class PlotEngine:
 
 class MultiPanelEngine:
     """
-    Multi-panel plotting engine for vertically stacked subplots.
+    Multi-panel plotting engine for vertically or horizontally stacked themed subplots.
     """
 
     def __init__(self, nrows: int, ncols: int = 1,
                  figsize: Tuple[float, float] = (10, 12),
-                 sharex: bool = False,
-                 compact: bool = False,
-                 projection=None):
+                 sharex: bool = False):
         self.m_nrows = nrows
         self.m_ncols = ncols
         self.m_figsize = figsize
-        self.m_sharex = sharex
-        self.m_figure = None
-        self.m_panels = []
-        self.m_compact = compact
-        self.m_projection = projection
+        self.m_figure, self.m_axes = plt.subplots(nrows, ncols, figsize=figsize, 
+                                                sharex=sharex, facecolor=PlotEngine.sColors['figureBg'])
+        
+        # Flatten axes for easier access
+        if nrows * ncols == 1:
+            self.m_axesFlat = [self.m_axes]
+        else:
+            self.m_axesFlat = self.m_axes.flatten()
+
+    def getEngine(self, index: int) -> PlotEngine:
+        """Returns a PlotEngine wrapper for a specific subplot axis."""
+        engine = PlotEngine.__new__(PlotEngine)
+        engine.m_figure = self.m_figure
+        engine.m_axes = self.m_axesFlat[index]
+        engine.m_figsize = self.m_figsize
+        engine.m_lineCounter = 0
+        engine.internalApplyTheme()
+        return engine
+
+    def saveFigure(self, filepath: str, dpi: int = 300) -> None:
+        self.m_figure.savefig(filepath, dpi=dpi, facecolor=self.m_figure.get_facecolor(), bbox_inches='tight')
+
+    def show(self) -> None:
+        plt.show()
         self.internalInitializePanels()
 
     def internalInitializePanels(self) -> None:
