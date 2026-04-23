@@ -29,7 +29,8 @@ CORE_METRICS = [
 METRIC_COLUMNS = []
 for m in CORE_METRICS: METRIC_COLUMNS.append(f"raw_{m}")
 for m in CORE_METRICS: METRIC_COLUMNS.append(f"wht_{m}")
-METRIC_COLUMNS.append("spdFail")
+METRIC_COLUMNS.append("rawSpdFail")
+METRIC_COLUMNS.append("whtSpdFail")
 
 SCALING_ID_MAP = {0: "constant", 1: "linear", 2: "sqrt", 3: "power"}
 
@@ -80,33 +81,36 @@ def computeMetrics(
 ) -> torch.Tensor:
     """Computes stability metrics for both Raw and Whitened Gram matrices."""
 
-    results = []
-
     # 1. Raw Gram
     G_raw = basis.m_gram
-    results.extend(calculateMatrixMetrics(G_raw))
+    raw_metrics, raw_fail = calculateMatrixMetrics(G_raw)
 
     # 2. Whitened Gram (L^-1 G L^-T)
     L = basis.m_chol
     LiG = torch.linalg.solve_triangular(L, G_raw, upper=False)
     G_wht = torch.linalg.solve_triangular(L, LiG.T, upper=False).T
-    results.extend(calculateMatrixMetrics(G_wht))
+    wht_metrics, wht_fail = calculateMatrixMetrics(G_wht)
 
-    return torch.tensor(results, dtype=torch.float64)
+    return torch.tensor(raw_metrics + wht_metrics + [raw_fail, wht_fail], dtype=torch.float64)
 
-def calculateMatrixMetrics(G: torch.Tensor) -> List[float]:
+def calculateMatrixMetrics(G: torch.Tensor) -> Tuple[List[float], float]:
     ev = torch.linalg.eigvalsh(G)
-    if ev[0] <= 0: raise ValueError("Non-SPD Gram")
+    fail = 1.0 if ev[0] <= 0 else 0.0
 
-    lMin, lMax = ev[0], ev[-1]
+    # We use abs() or clamp for log/condition to avoid crashing, 
+    # but the fail flag will tell the truth.
+    lMin = ev[0].clamp(min=1e-30)
+    lMax = ev[-1]
     l2 = ev[1] if ev.shape[0] > 1 else lMin
     cond = lMax / lMin
 
-    prob = ev / torch.sum(ev)
+    prob = ev.clamp(min=1e-30)
+    prob = prob / torch.sum(prob)
     entropy = -torch.sum(prob * torch.log(prob + 1e-12))
     gap = l2 / lMin
 
-    return [lMin.item(), lMax.item(), cond.item(), torch.log10(cond).item(), entropy.item(), gap.item()]
+    metrics = [ev[0].item(), ev[-1].item(), cond.item(), torch.log10(cond).item(), entropy.item(), gap.item()]
+    return metrics, fail
 
 # ============================================================
 # MAIN SWEEP
@@ -143,13 +147,13 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
             )
 
             metrics = computeMetrics(basis, domain)
-            allResults.append(torch.cat([configs[i], metrics, torch.tensor([0.0])]))
+            allResults.append(torch.cat([configs[i], metrics]))
 
         except Exception:
-            # Mark SPD failure
-            failRow = torch.zeros(len(CONFIG_COLUMNS) + len(CORE_METRICS)*2 + 1)
+            # Mark catastrophic failure (e.g. NaN in basis construction)
+            failRow = torch.zeros(len(CONFIG_COLUMNS) + len(CORE_METRICS)*2 + 2)
             failRow[:len(CONFIG_COLUMNS)] = configs[i]
-            failRow[-1] = 1.0
+            failRow[-2:] = 1.0 # Both failed
             allResults.append(failRow)
 
         if i == 0 or i % 10 == 0:
@@ -172,3 +176,13 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
 
 if __name__ == "__main__":
     runStabilitySweep()
+
+"""
+Torch set to REFERENCE mode (FP64) on cuda.
+Initializing Global Spectral Domain (4096 samples)...
+Starting optimized sweep over 10,563,696 configurations...
+ Progress: 10563690/10563696 (100.00%) | ETA: 0.0m
+Sweep complete in 393.17 minutes.
+Results saved to results\stability_results.parquet
+
+"""
