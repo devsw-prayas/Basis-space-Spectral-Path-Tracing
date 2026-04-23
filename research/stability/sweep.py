@@ -126,9 +126,14 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
     allResults = []
     t0 = time.time()
 
+    lastK = None
     for i in range(total):
         cfg = configs[i].tolist()
         familyId, K, order, scalingId, wMin, wMax, nMin, nMax, margin = cfg
+
+        if K != lastK:
+            print(f"\n[Lobe Batch K={int(K)}]", flush=True)
+            lastK = K
 
         try:
             centers = generateTopology(int(familyId), int(K), margin=margin)
@@ -151,10 +156,14 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
             failRow[-1] = 1.0
             allResults.append(failRow)
 
-        if i % 100 == 0:
+        if i % 10 == 0:
             elapsed = time.time() - t0
             eta = (elapsed / (i+1)) * (total - i - 1)
-            print(f" Progress: {i}/{total} ({100*i/total:.1f}%) | ETA: {eta/60:.1f}m", end="\r")
+            print(f" Progress: {i}/{total} ({100*i/total:.2f}%) | ETA: {eta/60:.1f}m", end="\r", flush=True)
+
+        if i % 1000 == 0 and i > 0:
+            # Print a permanent line every 1000 for history
+            print(f" Checkpoint: {i}/{total} | Avg Time: {(time.time()-t0)/i:.4f}s/row", flush=True)
 
     print(f"\nSweep complete in {(time.time()-t0)/60:.2f} minutes.")
 
