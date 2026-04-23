@@ -126,15 +126,9 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
     allResults = []
     t0 = time.time()
 
-    lastK = None
     for i in range(total):
         cfg = configs[i].tolist()
         familyId, K, order, scalingId, wMin, wMax, nMin, nMax, margin = cfg
-
-        if K != lastK:
-            if lastK is not None: print() # New line after the previous lobe batch
-            print(f"--- Processing Lobe Count K={int(K)} ---")
-            lastK = K
 
         try:
             centers = generateTopology(int(familyId), int(K), margin=margin)
