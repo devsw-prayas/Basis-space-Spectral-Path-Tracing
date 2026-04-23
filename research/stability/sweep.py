@@ -3,6 +3,7 @@ import torch
 import pandas as pd
 import traceback
 import time
+import sys
 from typing import List, Tuple
 
 from research.engine.domain import SpectralDomain
@@ -151,10 +152,12 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
             failRow[-1] = 1.0
             allResults.append(failRow)
 
-        if i % 10 == 0:
+        if i == 0 or i % 10 == 0:
             elapsed = time.time() - t0
             eta = (elapsed / (i+1)) * (total - i - 1)
-            print(f" Progress: {i}/{total} ({100*i/total:.2f}%) | ETA: {eta/60:.1f}m", end="\r", flush=True)
+            msg = f" Progress: {i}/{total} ({100*i/total:.2f}%) | ETA: {eta/60:.1f}m"
+            sys.stdout.write('\r' + msg)
+            sys.stdout.flush()
 
     print(f"\nSweep complete in {(time.time()-t0)/60:.2f} minutes.")
 
