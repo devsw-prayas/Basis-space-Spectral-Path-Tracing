@@ -131,13 +131,34 @@ class SpectralOperatorFactory:
 
     @staticmethod
     def createDispersion(basis: SpectralBasis, A: float, B: float, C: float) -> List[SpectralOperator]:
-        """5. Cauchy's Operator: n(λ) = A + B/λ^2 + C/λ^4 (Spectral-Geometric Lobe Coupling)"""
-        # Returns K operators, one per GHGSF lobe
-        lbda = basis.m_domain.m_lambda
-        n = A + B/(lbda**2) + C/(lbda**4)
-        # Partition of unity logic would be implemented here to derive lobe-specific selection ops
-        # For now, we provide the identity-partition stub
-        return [SpectralOperator.identity(basis) for _ in range(basis.m_K)]
+        """5. Cauchy's Operator: K rank-1 lobes with softmax partition of unity Σ Âk = IM.
+        A, B, C define n(λ) = A + B/λ² + C/λ⁴ — used by the renderer for per-lobe refraction
+        angles at geometric routing time. The spectral operators are the partition decomposition.
+        """
+        B_mat, w, lbda = basis.m_basisRaw, basis.m_domain.m_weights, basis.m_domain.m_lambda
+        centers = basis.m_centers
+        K = basis.m_K
+        device, dtype = lbda.device, lbda.dtype
+
+        # Lobe window width estimated from center spacing
+        if K > 1:
+            sigmaLobe = (centers[-1] - centers[0]) / (K - 1) * 0.6
+        else:
+            sigmaLobe = torch.tensor(50.0, device=device, dtype=dtype)
+
+        # Unnormalized Gaussian windows per lobe: (K, L)
+        windows = torch.exp(-0.5 * ((lbda.unsqueeze(0) - centers.unsqueeze(1)) / sigmaLobe) ** 2)
+
+        # Softmax normalize → Σ_k T_k(λ) = 1 → guarantees Σ_k Âk = IM in whitened space
+        T_lobes = windows / windows.sum(dim=0, keepdim=True).clamp(min=1e-12)
+
+        ops = []
+        for k in range(K):
+            M_raw = (B_mat * (w * T_lobes[k])) @ B_mat.T
+            A_wht = SpectralOperatorFactory._createWhitenedFromRaw(basis, M_raw)
+            ops.append(SpectralOperator(basis, A_wht, torch.zeros(basis.m_M, device=device, dtype=dtype)))
+
+        return ops
 
     @staticmethod
     def createScattering(basis: SpectralBasis, type: Literal["Rayleigh", "Mie"], 
@@ -151,11 +172,29 @@ class SpectralOperatorFactory:
         return SpectralOperator(basis, A_wht, torch.zeros(basis.m_M, device=A_wht.device))
 
     @staticmethod
-    def createRaman(basis: SpectralBasis, shift_nm: float) -> SpectralOperator:
-        """8. Raman's Operator: Banded off-diagonal frequency shift."""
-        # This requires a shift operator in wavelength space before projection
-        # Placeholder for banded matrix construction
-        return SpectralOperator.identity(basis)
+    def createRaman(basis: SpectralBasis, shift_nm: float, sigmaRaman: float = 10.0) -> SpectralOperator:
+        """8. Raman's Operator: Banded off-diagonal via 2D Galerkin projection of shift kernel.
+        K(λo, λi) is a Gaussian concentrated near λo = λi + shift_nm.
+        sigmaRaman controls Raman linewidth (~10 nm typical).
+        Note: allocates a transient (L×L) kernel — ~134 MB at L=4096 float64.
+        """
+        B_mat, w, lbda = basis.m_basisRaw, basis.m_domain.m_weights, basis.m_domain.m_lambda
+        device, dtype = lbda.device, lbda.dtype
+
+        # K(λo, λi) = Gaussian(λo - λi - shift_nm): (L, L)
+        lbda_o = lbda.unsqueeze(1)
+        lbda_i = lbda.unsqueeze(0)
+        K_mat = torch.exp(-0.5 * ((lbda_o - lbda_i - shift_nm) / sigmaRaman) ** 2)
+
+        # Column-normalize: unit quantum yield per input wavelength
+        K_mat = K_mat / K_mat.sum(dim=0, keepdim=True).clamp(min=1e-12)
+
+        # 2D Galerkin: M_raw[i,j] = Σ_{a,b} B[i,a] w_a K[a,b] w_b B[j,b]
+        Bw = B_mat * w
+        M_raw = Bw @ K_mat @ Bw.T
+
+        A_wht = SpectralOperatorFactory._createWhitenedFromRaw(basis, M_raw)
+        return SpectralOperator(basis, A_wht, torch.zeros(basis.m_M, device=device, dtype=dtype))
 
     @staticmethod
     def createEmission(basis: SpectralBasis, emission: Tensor) -> SpectralOperator:

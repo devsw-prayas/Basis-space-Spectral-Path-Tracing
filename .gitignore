@@ -1,0 +1,6 @@
+.claude/
+results/
+plots/
+**/__pycache__/
+*.pyc
+*.parquet

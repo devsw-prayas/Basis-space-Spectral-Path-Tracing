@@ -23,7 +23,7 @@ CONFIG_COLUMNS = [
 # Metrics computed for both Raw and Whitened states
 CORE_METRICS = [
     "lambdaMin", "lambdaMax", "condition", "logCond",
-    "entropy", "eigenGap"
+    "entropy", "eigenGap", "traceG", "stdEig"
 ]
 
 METRIC_COLUMNS = []
@@ -59,17 +59,17 @@ def buildSweepConfigs(device=torch.device("cpu")) -> torch.Tensor:
     baseExp   = base.unsqueeze(1).expand(B, D, -1)
     domainExp = domains.unsqueeze(0).expand(B, D, -1)
 
-    combined = torch.cat([baseExp, domainExp], dim=2).reshape(-1, 10)
-    
+    combined = torch.cat([baseExp, domainExp], dim=2).reshape(-1, 8)
+
     # Add margins: 0.0, 10.0, 20.0 nm
     margins = torch.tensor([0.0, 10.0, 20.0], device=device, dtype=torch.float64)
     M = margins.shape[0]
-    
+
     combinedExp = combined.unsqueeze(1).expand(-1, M, -1)
     marginExp   = margins.view(1, M, 1).expand(combined.shape[0], -1, -1)
-    
-    configs = torch.cat([combinedExp, marginExp], dim=2).reshape(-1, 11)
-    return configs[:, [0, 1, 2, 3, 6, 7, 8, 9, 10]] # Correct column mapping
+
+    configs = torch.cat([combinedExp, marginExp], dim=2).reshape(-1, 9)
+    return configs
 
 # ============================================================
 # METRIC ENGINE
@@ -109,7 +109,10 @@ def calculateMatrixMetrics(G: torch.Tensor) -> Tuple[List[float], float]:
     entropy = -torch.sum(prob * torch.log(prob + 1e-12))
     gap = l2 / lMin
 
-    metrics = [ev[0].item(), ev[-1].item(), cond.item(), torch.log10(cond).item(), entropy.item(), gap.item()]
+    traceG = torch.sum(ev).item()
+    stdEig = torch.std(ev).item()
+
+    metrics = [ev[0].item(), ev[-1].item(), cond.item(), torch.log10(cond).item(), entropy.item(), gap.item(), traceG, stdEig]
     return metrics, fail
 
 # ============================================================
@@ -151,7 +154,7 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
 
         except Exception:
             # Mark catastrophic failure (e.g. NaN in basis construction)
-            failRow = torch.zeros(len(CONFIG_COLUMNS) + len(CORE_METRICS)*2 + 2)
+            failRow = torch.zeros(len(CONFIG_COLUMNS) + len(CORE_METRICS)*2 + 2, dtype=torch.float64)
             failRow[:len(CONFIG_COLUMNS)] = configs[i]
             failRow[-2:] = 1.0 # Both failed
             allResults.append(failRow)

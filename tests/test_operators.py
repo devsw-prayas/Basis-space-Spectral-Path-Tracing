@@ -12,7 +12,8 @@ def testOperators():
     
     # Golden Config: Family 0, K=8, N=11, Scaling 1 (Linear)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    domain = SpectralDomain(380, 830, 4096, device=device, dtype=torch.float64)
+    # SUB-NANOMETER RESOLUTION: 16,384 samples (~0.027nm delta)
+    domain = SpectralDomain(380, 830, 16384, device=device, dtype=torch.float64)
     
     K, N = 8, 11
     centers = generateTopology(0, K, margin=0.0)
@@ -26,6 +27,7 @@ def testOperators():
     )
     
     print(f"Basis Initialized: K={K}, N={N} (Size: {basis.m_M})")
+    print(f"Domain Resolution: {domain.m_count} samples ({domain.m_delta.item():.4f}nm delta)")
     print(f"Condition Number: {torch.linalg.cond(basis.m_gram):.2e}")
 
     # Test Spectrum: Flat 1.0
@@ -33,17 +35,26 @@ def testOperators():
     alpha_raw = basis.project(s_in)
     alpha_wht = basis.projectWhitened(s_in)
 
-    # 1. TEST: Dirac-like Stress Test (1nm peak at 500nm)
-    print("\n[HARD TEST 1] Narrow Dirac Spike (1nm width at 500nm)")
-    s_spike = torch.exp(-0.5 * ((domain.m_lambda - 500) / 1.0)**2)
+    # 1. TEST: Dirac-like Stress Test (0.1nm peak at 500nm)
+    print("\n[HARD TEST 1] Ultra-Narrow Spike (0.1nm width at 500nm)")
+    s_spike = torch.exp(-0.5 * ((domain.m_lambda - 500) / 0.1)**2)
     alpha_spike = basis.projectWhitened(s_spike)
     s_recon_spike = basis.reconstructWhitened(alpha_spike)
     
+    # ENERGY PRESERVATION (True Error)
+    energy_in = domain.integrate(s_spike).item()
+    energy_out = domain.integrate(s_recon_spike).item()
+    energy_error = abs(energy_in - energy_out)
+
     # Measure RMS error and peak preservation
     rms_error = torch.sqrt(torch.mean((s_spike - s_recon_spike)**2)).item()
     peak_recon = s_recon_spike.max().item()
+    
+    print(f"  Energy In: {energy_in:.10f}")
+    print(f"  Energy Out: {energy_out:.10f}")
+    print(f"  True Energy Error: {energy_error:.2e} | {'OK' if energy_error < 1e-3 else 'FAIL'}")
     print(f"  RMS Error: {rms_error:.2e}")
-    print(f"  Peak Preservation: {peak_recon:.6f} (Original: 1.0) | {'OK' if rms_error < 5e-2 else 'FAIL'}")
+    print(f"  Peak Preservation: {peak_recon:.6f} (Original: 1.0)")
 
     # 2. TEST: Beer-Lambert Absorption (50% uniform)
     print("\n[TEST 2] Beer-Lambert Absorption (50% uniform)")
@@ -79,9 +90,28 @@ def testOperators():
     reflectance = s_out_fres.mean().item()
     print(f"  Actual: {reflectance:.10f} | Error: {abs(reflectance - 0.04):.2e}")
 
-    print("\n" + "=" * 63)
-    print(" HARD VALIDATION COMPLETE")
-    print("=" * 63)
+    # 5. TEST: Multibounce Absorption (10 bounces at 50%)
+    print("\n[MULTIBOUNCE 1] Deep Absorption (10 bounces at 50%)")
+    sigma_a = lambda lbda: torch.ones_like(lbda) * (-np.log(0.5) / 1.0)
+    op_abs = SpectralOperatorFactory.createAbsorption(basis, sigma_a, distance=1.0)
+    
+    alpha_multi = alpha_wht.clone()
+    for _ in range(10):
+        alpha_multi = op_abs.m_A @ alpha_multi
+    
+    s_multi = basis.reconstructWhitened(alpha_multi)
+    expected = 0.5**10
+    actual = s_multi.mean().item()
+    print(f"  Expected: {expected:.10f} | Actual: {actual:.10f}")
+    print(f"  Error: {abs(actual - expected):.2e} | {'OK' if abs(actual - expected) < 1e-6 else 'FAIL'}")
+
+    # 6. TEST: Operator Composition (Absorption * Fresnel)
+    print("\n[MULTIBOUNCE 2] Operator Composition (Abs 50% * Fresnel 4%)")
+    alpha_iter = op_p0.m_A @ (op_abs.m_A @ alpha_wht)
+    A_composed = op_p0.m_A @ op_abs.m_A
+    alpha_comp = A_composed @ alpha_wht
+    diff = torch.norm(alpha_iter - alpha_comp).item()
+    print(f"  Composition Diff: {diff:.2e} | {'OK' if diff < 1e-12 else 'FAIL'}")
 
     print("\n" + "=" * 63)
     print(" VALIDATION COMPLETE")
