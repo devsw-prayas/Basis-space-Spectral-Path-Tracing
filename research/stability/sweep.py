@@ -1,4 +1,5 @@
 import os
+import glob
 import torch
 import pandas as pd
 import traceback
@@ -20,7 +21,6 @@ CONFIG_COLUMNS = [
     "wideMin", "wideMax", "narrowMin", "narrowMax", "margin"
 ]
 
-# Metrics computed for both Raw and Whitened states
 CORE_METRICS = [
     "lambdaMin", "lambdaMax", "condition", "logCond",
     "entropy", "eigenGap", "traceG", "stdEig"
@@ -33,6 +33,8 @@ METRIC_COLUMNS.append("rawSpdFail")
 METRIC_COLUMNS.append("whtSpdFail")
 
 SCALING_ID_MAP = {0: "constant", 1: "linear", 2: "sqrt", 3: "power"}
+
+CHECKPOINT_INTERVAL = 50_000   # flush every N configs
 
 # ============================================================
 # CONFIGURATION BUILDER
@@ -61,7 +63,6 @@ def buildSweepConfigs(device=torch.device("cpu")) -> torch.Tensor:
 
     combined = torch.cat([baseExp, domainExp], dim=2).reshape(-1, 8)
 
-    # Add margins: 0.0, 10.0, 20.0 nm
     margins = torch.tensor([0.0, 10.0, 20.0], device=device, dtype=torch.float64)
     M = margins.shape[0]
 
@@ -79,13 +80,9 @@ def computeMetrics(
     basis: GHGSFDualDomainBasis,
     domain: SpectralDomain
 ) -> torch.Tensor:
-    """Computes stability metrics for both Raw and Whitened Gram matrices."""
-
-    # 1. Raw Gram
     G_raw = basis.m_gram
     raw_metrics, raw_fail = calculateMatrixMetrics(G_raw)
 
-    # 2. Whitened Gram (L^-1 G L^-T)
     L = basis.m_chol
     LiG = torch.linalg.solve_triangular(L, G_raw, upper=False)
     G_wht = torch.linalg.solve_triangular(L, LiG.T, upper=False).T
@@ -97,8 +94,6 @@ def calculateMatrixMetrics(G: torch.Tensor) -> Tuple[List[float], float]:
     ev = torch.linalg.eigvalsh(G)
     fail = 1.0 if ev[0] <= 0 else 0.0
 
-    # We use abs() or clamp for log/condition to avoid crashing, 
-    # but the fail flag will tell the truth.
     lMin = ev[0].clamp(min=1e-30)
     lMax = ev[-1]
     l2 = ev[1] if ev.shape[0] > 1 else lMin
@@ -116,25 +111,65 @@ def calculateMatrixMetrics(G: torch.Tensor) -> Tuple[List[float], float]:
     return metrics, fail
 
 # ============================================================
+# CHECKPOINT HELPERS
+# ============================================================
+
+def _flushCheckpoint(buffer: list, columns: list, outputFile: str, chunkIdx: int) -> None:
+    """Write buffer to a numbered shard and clear it in-place."""
+    chunkFile = outputFile.replace(".parquet", f"_chunk{chunkIdx:04d}.parquet")
+    data = torch.stack(buffer).numpy()
+    pd.DataFrame(data, columns=columns).to_parquet(chunkFile, engine="pyarrow")
+    print(f"\n  [checkpoint] Wrote {len(buffer):,} rows -> {os.path.basename(chunkFile)}")
+    buffer.clear()
+
+
+def mergeChunks(outputFile: str, columns: list) -> None:
+    """Merge all _chunkNNNN.parquet shards into the final output file and delete shards."""
+    pattern = outputFile.replace(".parquet", "_chunk*.parquet")
+    chunks  = sorted(glob.glob(pattern))
+    if not chunks:
+        return
+    print(f"Merging {len(chunks)} chunks into {os.path.basename(outputFile)} ...")
+    df = pd.concat([pd.read_parquet(c) for c in chunks], ignore_index=True)
+    df.to_parquet(outputFile, engine="pyarrow")
+    for c in chunks:
+        os.remove(c)
+    print(f"Merge complete. Final rows: {len(df):,}")
+
+# ============================================================
 # MAIN SWEEP
 # ============================================================
 
 def runStabilitySweep(outputFile: str = "stability_results.parquet"):
-    torchInfo = TorchConfig.setMode("reference", verbose=True) # FP64 for stability research
+    torchInfo = TorchConfig.setMode("reference", verbose=True)
     device, dtype = torchInfo["device"], torchInfo["dtype"]
 
-    # Build Domain ONCE
     print("Initializing Global Spectral Domain (4096 samples)...")
     domain = SpectralDomain(380.0, 830.0, 4096, device=device, dtype=dtype)
 
     configs = buildSweepConfigs(device)
-    total = configs.shape[0]
-    print(f"Starting optimized sweep over {total:,} configurations...")
+    total   = configs.shape[0]
 
-    allResults = []
+    os.makedirs("results", exist_ok=True)
+    outputFile = os.path.join("results", outputFile)
+    allColumns = CONFIG_COLUMNS + METRIC_COLUMNS
+
+    # Resume: count rows already written across existing chunk files
+    existingChunks = sorted(glob.glob(outputFile.replace(".parquet", "_chunk*.parquet")))
+    startRow = 0
+    chunkIdx = 0
+    if existingChunks:
+        for c in existingChunks:
+            startRow += len(pd.read_parquet(c))
+        chunkIdx = len(existingChunks)
+        print(f"Resuming from row {startRow:,} (found {len(existingChunks)} existing chunk(s)).")
+    else:
+        print(f"Starting sweep over {total:,} configurations...")
+
+    buffer = []
     t0 = time.time()
 
-    for i in range(total):
+    for i in range(startRow, total):
         cfg = configs[i].tolist()
         familyId, K, order, scalingId, wMin, wMax, nMin, nMax, margin = cfg
 
@@ -143,49 +178,42 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
             basis = GHGSFDualDomainBasis(
                 domain=domain,
                 centers=centers,
-                numWide=int(K)//2,
-                wideSigmaMin=wMin, wideSigmaMax=wMax, wideScaleType=SCALING_ID_MAP[int(scalingId)],
-                narrowSigmaMin=nMin, narrowSigmaMax=nMax, narrowScaleType=SCALING_ID_MAP[int(scalingId)],
+                numWide=int(K) // 2,
+                wideSigmaMin=wMin,  wideSigmaMax=wMax,
+                wideScaleType=SCALING_ID_MAP[int(scalingId)],
+                narrowSigmaMin=nMin, narrowSigmaMax=nMax,
+                narrowScaleType=SCALING_ID_MAP[int(scalingId)],
                 order=int(order)
             )
-
             metrics = computeMetrics(basis, domain)
-            allResults.append(torch.cat([configs[i], metrics]))
+            buffer.append(torch.cat([configs[i], metrics]))
 
         except Exception:
-            # Mark catastrophic failure (e.g. NaN in basis construction)
-            failRow = torch.zeros(len(CONFIG_COLUMNS) + len(CORE_METRICS)*2 + 2, dtype=torch.float64)
+            failRow = torch.zeros(len(allColumns), dtype=torch.float64)
             failRow[:len(CONFIG_COLUMNS)] = configs[i]
-            failRow[-2:] = 1.0 # Both failed
-            allResults.append(failRow)
+            failRow[-2:] = 1.0
+            buffer.append(failRow)
 
-        if i == 0 or i % 10 == 0:
+        # Checkpoint flush
+        if len(buffer) >= CHECKPOINT_INTERVAL:
+            _flushCheckpoint(buffer, allColumns, outputFile, chunkIdx)
+            chunkIdx += 1
+
+        if (i - startRow) % 10 == 0:
             elapsed = time.time() - t0
-            eta = (elapsed / (i+1)) * (total - i - 1)
-            msg = f" Progress: {i}/{total} ({100*i/total:.2f}%) | ETA: {eta/60:.1f}m"
-            sys.stdout.write('\r' + msg)
+            done    = i - startRow + 1
+            eta     = (elapsed / done) * (total - i - 1)
+            sys.stdout.write(f"\r Progress: {i:,}/{total:,} ({100*i/total:.2f}%) | ETA: {eta/60:.1f}m")
             sys.stdout.flush()
 
-    print(f"\nSweep complete in {(time.time()-t0)/60:.2f} minutes.")
+    # Flush remainder
+    if buffer:
+        _flushCheckpoint(buffer, allColumns, outputFile, chunkIdx)
 
-    # Save results
-    os.makedirs("results", exist_ok=True)
-    outputFile = os.path.join("results", outputFile)
-    
-    finalData = torch.stack(allResults).numpy()
-    df = pd.DataFrame(finalData, columns=CONFIG_COLUMNS + METRIC_COLUMNS)
-    df.to_parquet(outputFile, engine='pyarrow')
+    print(f"\nSweep complete in {(time.time() - t0) / 60:.2f} minutes.")
+    mergeChunks(outputFile, allColumns)
     print(f"Results saved to {outputFile}")
+
 
 if __name__ == "__main__":
     runStabilitySweep()
-
-"""
-Torch set to REFERENCE mode (FP64) on cuda.
-Initializing Global Spectral Domain (4096 samples)...
-Starting optimized sweep over 10,563,696 configurations...
- Progress: 10563690/10563696 (100.00%) | ETA: 0.0m
-Sweep complete in 393.17 minutes.
-Results saved to results\stability_results.parquet
-
-"""

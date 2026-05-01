@@ -158,59 +158,34 @@ class MultiPanelEngine:
         self.m_nrows = nrows
         self.m_ncols = ncols
         self.m_figsize = figsize
-        self.m_figure, self.m_axes = plt.subplots(nrows, ncols, figsize=figsize, 
-                                                sharex=sharex, facecolor=PlotEngine.sColors['figureBg'])
-        
-        # Flatten axes for easier access
-        if nrows * ncols == 1:
-            self.m_axesFlat = [self.m_axes]
-        else:
-            self.m_axesFlat = self.m_axes.flatten()
+        self.m_sharex = sharex
+        self.m_panels: List[PlotEngine] = []
 
-    def getEngine(self, index: int) -> PlotEngine:
-        """Returns a PlotEngine wrapper for a specific subplot axis."""
-        engine = PlotEngine.__new__(PlotEngine)
-        engine.m_figure = self.m_figure
-        engine.m_axes = self.m_axesFlat[index]
-        engine.m_figsize = self.m_figsize
-        engine.m_lineCounter = 0
-        engine.internalApplyTheme()
-        return engine
-
-    def saveFigure(self, filepath: str, dpi: int = 300) -> None:
-        self.m_figure.savefig(filepath, dpi=dpi, facecolor=self.m_figure.get_facecolor(), bbox_inches='tight')
-
-    def show(self) -> None:
-        plt.show()
-        self.internalInitializePanels()
-
-    def internalInitializePanels(self) -> None:
         self.m_figure, axesArray = plt.subplots(
-            self.m_nrows,
-            self.m_ncols,
-            figsize=self.m_figsize,
-            sharex=self.m_sharex,
+            nrows, ncols, figsize=figsize,
+            sharex=sharex,
             facecolor=PlotEngine.sColors['figureBg'],
-            constrained_layout=True,
-            subplot_kw={'projection': self.m_projection} if self.m_projection else None
+            constrained_layout=True
         )
-
-        if self.m_nrows == 1 and self.m_ncols == 1:
-            axesList = [axesArray]
-        elif self.m_nrows == 1 or self.m_ncols == 1:
-            axesList = axesArray if isinstance(axesArray, np.ndarray) else [axesArray]
-        else:
-            axesList = np.array(axesArray).reshape(-1)
-
         self.m_figure.patch.set_facecolor(PlotEngine.sColors['figureBg'])
+
+        # Flatten axes into a uniform list regardless of shape
+        if nrows * ncols == 1:
+            axesList = [axesArray]
+        elif nrows == 1 or ncols == 1:
+            axesList = list(axesArray) if isinstance(axesArray, np.ndarray) else [axesArray]
+        else:
+            axesList = list(np.array(axesArray).reshape(-1))
 
         for ax in axesList:
             ax.set_facecolor(PlotEngine.sColors['axesBg'])
             ax.patch.set_facecolor(PlotEngine.sColors['axesBg'])
-            panel = self.internalCreatePanelFromAxes(ax)
-            self.m_panels.append(panel)
+            self.m_panels.append(self.internalCreatePanelFromAxes(ax))
 
-    def internalCreatePanelFromAxes(self, ax) -> PlotEngine:
+    def internalInitializePanels(self) -> None:
+        pass  # panels are built in __init__; kept for API compatibility
+
+    def internalCreatePanelFromAxes(self, ax) -> "PlotEngine":
         panel = PlotEngine.__new__(PlotEngine)
         panel.m_figure = self.m_figure
         panel.m_axes = ax
@@ -219,7 +194,7 @@ class MultiPanelEngine:
         panel.internalApplyTheme()
         return panel
 
-    def getPanel(self, index: int) -> PlotEngine:
+    def getPanel(self, index: int) -> "PlotEngine":
         return self.m_panels[index]
 
     def setMainTitle(self, title: str, fontSize: Optional[int] = None) -> None:
