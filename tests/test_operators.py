@@ -84,7 +84,7 @@ def testOperators():
     print("\n[TEST 4] Fresnel Normal Incidence (P0)")
     f_inf = torch.ones_like(domain.m_lambda) * 0.04
     ops_fresnel = SpectralOperatorFactory.createFresnel(basis, f_inf)
-    op_p0 = ops_fresnel["P0"]
+    op_p0 = ops_fresnel.P0
     alpha_out_fres = op_p0.m_A @ alpha_wht
     s_out_fres = basis.reconstructWhitened(alpha_out_fres)
     reflectance = s_out_fres.mean().item()

@@ -1,8 +1,16 @@
 import torch
 from torch import Tensor
-from typing import Optional, Callable, Dict, Any, List, Tuple, Literal
+from typing import Optional, Callable, Dict, Any, List, Tuple, Literal, NamedTuple
 
 from research.engine.basis import SpectralBasis
+
+
+class FresnelOps(NamedTuple):
+    P0: "SpectralOperator"
+    Psq: "SpectralOperator"
+    Rcross: "SpectralOperator"
+    Qcomp: "SpectralOperator"
+
 
 class SpectralOperator:
     """
@@ -11,15 +19,15 @@ class SpectralOperator:
     """
 
     def __init__(
-        self,
-        basis: SpectralBasis,
-        A: Tensor,
-        b: Tensor
+            self,
+            basis: SpectralBasis,
+            A: Tensor,
+            b: Tensor
     ):
         self.m_basis = basis
-        M      = basis.m_M
+        M = basis.m_M
         device = basis.m_basisRaw.device
-        dtype  = basis.m_basisRaw.dtype
+        dtype = basis.m_basisRaw.dtype
 
         if A.shape != (M, M):
             raise ValueError(f"Matrix A must be shape [{M}, {M}], got {A.shape}.")
@@ -45,9 +53,9 @@ class SpectralOperator:
 
     @staticmethod
     def identity(basis: SpectralBasis) -> "SpectralOperator":
-        M      = basis.m_M
+        M = basis.m_M
         device = basis.m_basisRaw.device
-        dtype  = basis.m_basisRaw.dtype
+        dtype = basis.m_basisRaw.dtype
         return SpectralOperator(
             basis,
             torch.eye(M, device=device, dtype=dtype),
@@ -56,9 +64,9 @@ class SpectralOperator:
 
     @staticmethod
     def zero(basis: SpectralBasis) -> "SpectralOperator":
-        M      = basis.m_M
+        M = basis.m_M
         device = basis.m_basisRaw.device
-        dtype  = basis.m_basisRaw.dtype
+        dtype = basis.m_basisRaw.dtype
         return SpectralOperator(
             basis,
             torch.zeros((M, M), device=device, dtype=dtype),
@@ -68,7 +76,7 @@ class SpectralOperator:
 
 class SpectralOperatorFactory:
     """
-    Factory for creating the Eight Spectral Operators as defined in the 
+    Factory for creating the Eight Spectral Operators as defined in the
     Macro-Optics specification. All operators are constructed in Whitened Space (Â).
     """
 
@@ -93,21 +101,48 @@ class SpectralOperatorFactory:
         return SpectralOperator(basis, A_wht, torch.zeros(basis.m_M, device=A_wht.device))
 
     @staticmethod
-    def createFresnel(basis: SpectralBasis, F_inf: Tensor) -> Dict[str, SpectralOperator]:
+    def createFresnel(basis: SpectralBasis, F_inf: Tensor) -> FresnelOps:
         """2. Fresnel's Operator: Schlick decomposition into 4 sub-operators."""
         B, w = basis.m_basisRaw, basis.m_domain.m_weights
-        
+
         def mkOp(profile):
             M_raw = (B * (w * profile)) @ B.T
             A_wht = SpectralOperatorFactory._createWhitenedFromRaw(basis, M_raw)
-            return SpectralOperator(basis, A_wht, torch.zeros(basis.m_M, device=A_wht.device))
+            return SpectralOperator(basis, A_wht, torch.zeros(basis.m_M, device=A_wht.device, dtype=A_wht.dtype))
 
-        return {
-            "P0":     mkOp(F_inf),
-            "Psq":    mkOp(F_inf**2),
-            "Rcross": mkOp(F_inf * (1.0 - F_inf)),
-            "Qcomp":  mkOp((1.0 - F_inf)**2)
-        }
+        return FresnelOps(
+            P0=mkOp(F_inf),
+            Psq=mkOp(F_inf ** 2),
+            Rcross=mkOp(F_inf * (1.0 - F_inf)),
+            Qcomp=mkOp((1.0 - F_inf) ** 2)
+        )
+
+    @staticmethod
+    def assembleFresnel(
+            fresnel_ops: Dict[str, "SpectralOperator"],
+            cos_theta: float,
+            basis: SpectralBasis
+    ) -> "SpectralOperator":
+        """
+        Render-time Fresnel assembly. The only dynamic operator in the hot loop.
+        Â_F(θ) = P0 + (1 - cosθ)^5 * (I_M - P0)
+               = (1 - t) * P0 + t * I_M    where t = (1 - cosθ)^5
+
+        Takes the 4 baked operators from createFresnel and a per-ray cos_theta.
+        Cost: two scalar-matrix multiplies + one matrix add. O(M^2) but cheap.
+        """
+        t = (1.0 - cos_theta) ** 5
+        M = basis.m_M
+        device = basis.m_basisRaw.device
+        dtype = basis.m_basisRaw.dtype
+
+        I_M = torch.eye(M, device=device, dtype=dtype)
+        A_assembled = (1.0 - t) * fresnel_ops.m_A + t * I_M
+        return SpectralOperator(
+            basis,
+            A_assembled,
+            torch.zeros(M, device=device, dtype=dtype)
+        )
 
     @staticmethod
     def createThinFilm(basis: SpectralBasis, n: float, d: float) -> SpectralOperator:
@@ -122,9 +157,9 @@ class SpectralOperatorFactory:
     def createFluorescence(basis: SpectralBasis, e: Tensor, a: Tensor) -> SpectralOperator:
         """4. Stokes' Operator: Bispectral Rank-1 kernel K = e * a^T"""
         # Project emission and absorption profiles into whitened space
-        e_wht = basis.projectWhitened(e) # e_wht = L^-1 (B w e)
-        a_wht = basis.projectWhitened(a) # a_wht = L^-1 (B w a)
-        
+        e_wht = basis.projectWhitened(e)  # e_wht = L^-1 (B w e)
+        a_wht = basis.projectWhitened(a)  # a_wht = L^-1 (B w a)
+
         # Â = e_wht * a_wht^T
         A_wht = torch.outer(e_wht, a_wht)
         return SpectralOperator(basis, A_wht, torch.zeros(basis.m_M, device=A_wht.device))
@@ -161,11 +196,11 @@ class SpectralOperatorFactory:
         return ops
 
     @staticmethod
-    def createScattering(basis: SpectralBasis, type: Literal["Rayleigh", "Mie"], 
+    def createScattering(basis: SpectralBasis, type: Literal["Rayleigh", "Mie"],
                          sigmaS_base: float, distance: float, alpha: float = 4.0) -> SpectralOperator:
         """6/7. Rayleigh/Mie Scattering: T(λ) = e^-σs(λ) d"""
         B, w, lbda = basis.m_basisRaw, basis.m_domain.m_weights, basis.m_domain.m_lambda
-        sigmaS = sigmaS_base * (lbda / 550.0)**(-alpha) # Alpha=4 for Rayleigh, 0-2 for Mie
+        sigmaS = sigmaS_base * (lbda / 550.0) ** (-alpha)  # Alpha=4 for Rayleigh, 0-2 for Mie
         T = torch.exp(-sigmaS * distance)
         M_raw = (B * (w * T)) @ B.T
         A_wht = SpectralOperatorFactory._createWhitenedFromRaw(basis, M_raw)
@@ -203,8 +238,8 @@ class SpectralOperatorFactory:
         return SpectralOperator(basis, A_zero, b_wht)
 
     @staticmethod
-    def createLocalization(basis: SpectralBasis, lambdaQ: float, 
-                           sigma: Optional[float] = None, 
+    def createLocalization(basis: SpectralBasis, lambdaQ: float,
+                           sigma: Optional[float] = None,
                            normalized: bool = False) -> SpectralOperator:
         """
         The Splitting Kernel: Creates an importance window around λq.
@@ -212,7 +247,7 @@ class SpectralOperatorFactory:
         """
         lbda = basis.m_domain.m_lambda
         device, dtype = lbda.device, lbda.dtype
-        
+
         # Default sigma logic (one-half lobe width)
         if sigma is None:
             span = (lbda[-1] - lbda[0]).item()
@@ -222,7 +257,8 @@ class SpectralOperatorFactory:
 
         if normalized:
             # Divide by the sum of all Gaussian lobes to enforce Partition of Unity
-            centers = basis.m_centers if hasattr(basis, "m_centers") else torch.linspace(lbda[0], lbda[-1], basis.m_K, device=device)
+            centers = basis.m_centers if hasattr(basis, "m_centers") else torch.linspace(lbda[0], lbda[-1], basis.m_K,
+                                                                                         device=device)
             all_lobes = torch.exp(-0.5 * ((lbda.unsqueeze(0) - centers.unsqueeze(1)) / sigma) ** 2)
             denom = all_lobes.sum(dim=0).clamp(min=1e-12)
             T = T / denom

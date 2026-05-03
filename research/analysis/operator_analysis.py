@@ -99,7 +99,7 @@ sigma_a    = lambda l: torch.full_like(l, 0.002)
 op_beer    = SpectralOperatorFactory.createAbsorption(basis, sigma_a, distance=1.0)
 
 f_inf      = torch.full_like(basis.m_domain.m_lambda, 0.04)
-op_p0      = SpectralOperatorFactory.createFresnel(basis, f_inf)["P0"]
+op_p0      = SpectralOperatorFactory.createFresnel(basis, f_inf).P0
 
 op_film    = SpectralOperatorFactory.createThinFilm(basis, n=1.5, d=300.0)
 

@@ -2,10 +2,15 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="68039892-f1bc-41d4-970b-f2ae529104c8" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/tests/pt_lifts.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/research/analysis/operator_analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/research/analysis/operator_analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/research/analysis/operator_validation.py" beforeDir="false" afterPath="$PROJECT_DIR$/research/analysis/operator_validation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/research/engine/operator.py" beforeDir="false" afterPath="$PROJECT_DIR$/research/engine/operator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/research/engine/whitening.py" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/research/plot/engine.py" beforeDir="false" afterPath="$PROJECT_DIR$/research/plot/engine.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/research/stability/results/stability_results.parquet" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/research/stability/sweep.py" beforeDir="false" afterPath="$PROJECT_DIR$/research/stability/sweep.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_multibounce_plots.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_multibounce_plots.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_operators.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_operators.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -30,30 +35,33 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.check_env.executor&quot;: &quot;Run&quot;,
-    &quot;Python.phase1_master.executor&quot;: &quot;Run&quot;,
-    &quot;Python.sweep.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_multibounce.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_multibounce_plots.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_operators.executor&quot;: &quot;Run&quot;,
-    &quot;Python.verify_refactor.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/StormWeaver/Development/Graphics Programming/R&amp;D/Basis-space Spectral Path Tracing&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;org.jetbrains.plugins.github.ui.GithubSettingsConfigurable&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.check_env.executor": "Run",
+    "Python.operator_analysis.executor": "Run",
+    "Python.operator_validation.executor": "Run",
+    "Python.phase1_master.executor": "Run",
+    "Python.pt_lifts.executor": "Run",
+    "Python.sweep.executor": "Run",
+    "Python.test.executor": "Run",
+    "Python.test_multibounce.executor": "Run",
+    "Python.test_multibounce_plots.executor": "Run",
+    "Python.test_operators.executor": "Run",
+    "Python.verify_refactor.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "ai.playground.ignore.import.keys.banner.in.settings": "true",
+    "git-widget-placeholder": "master",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/StormWeaver/Development/Graphics Programming/R&D/Basis-space Spectral Path Tracing",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "org.jetbrains.plugins.github.ui.GithubSettingsConfigurable",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
-  <component name="RunManager" selected="Python.phase1_master">
+}]]></component>
+  <component name="RunManager">
     <configuration name="phase1_master" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Basis-space Spectral Path Tracing" />
       <option name="ENV_FILES" value="" />
@@ -104,8 +112,8 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.phase1_master" />
         <item itemvalue="Python.test_multibounce_plots" />
+        <item itemvalue="Python.phase1_master" />
       </list>
     </recent_temporary>
   </component>
@@ -132,6 +140,8 @@
       <workItem from="1777619946272" duration="3225000" />
       <workItem from="1777623350837" duration="346000" />
       <workItem from="1777623890083" duration="3739000" />
+      <workItem from="1777697404893" duration="2021000" />
+      <workItem from="1777803406362" duration="7323000" />
     </task>
     <servers />
   </component>
@@ -140,11 +150,14 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$sweep.coverage" NAME="sweep Coverage Results" MODIFIED="1776939557693" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/research/stability" />
+    <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$pt_lifts.coverage" NAME="pt_lifts Coverage Results" MODIFIED="1777809772746" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
     <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$verify_refactor.coverage" NAME="verify_refactor Coverage Results" MODIFIED="1776938672651" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
+    <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$operator_analysis.coverage" NAME="operator_analysis Coverage Results" MODIFIED="1777809982196" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/research/analysis" />
     <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$phase1_master.coverage" NAME="phase1_master Coverage Results" MODIFIED="1777623909116" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$test_operators.coverage" NAME="test_operators Coverage Results" MODIFIED="1776968615868" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
-    <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$test_multibounce_plots.coverage" NAME="test_multibounce_plots Coverage Results" MODIFIED="1777622812835" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
+    <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$test_operators.coverage" NAME="test_operators Coverage Results" MODIFIED="1777810003510" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
+    <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$test_multibounce_plots.coverage" NAME="test_multibounce_plots Coverage Results" MODIFIED="1777812820869" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
     <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$check_env.coverage" NAME="check_env Coverage Results" MODIFIED="1776938685664" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$operator_validation.coverage" NAME="operator_validation Coverage Results" MODIFIED="1777810105547" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/research/analysis" />
     <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$test.coverage" NAME="test Coverage Results" MODIFIED="1777028137402" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Basis_space_Spectral_Path_Tracing$test_multibounce.coverage" NAME="test_multibounce Coverage Results" MODIFIED="1777377332955" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tests" />
   </component>

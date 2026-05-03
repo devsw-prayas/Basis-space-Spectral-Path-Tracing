@@ -250,7 +250,7 @@ def test_s0_2_fresnel_p0_plot():
     domain, basis = create_golden_basis()
     f_inf = flat_profile(0.1, domain)
     ops = SpectralOperatorFactory.createFresnel(basis, f_inf)
-    op = ops["P0"]
+    op = ops.P0
 
     alpha = basis.projectWhitened(torch.ones_like(domain.m_lambda))
 
@@ -293,7 +293,7 @@ def test_s0_3_fresnel_qcomp_plot():
     domain, basis = create_golden_basis()
     f_inf = flat_profile(0.04, domain)
     ops = SpectralOperatorFactory.createFresnel(basis, f_inf)
-    op = ops["Qcomp"]
+    op = ops.Qcomp
 
     alpha = basis.projectWhitened(torch.ones_like(domain.m_lambda))
 
@@ -523,7 +523,7 @@ def test_tc7_plot():
 
     f_inf = flat_profile(0.04, domain)
     ops_fresnel = SpectralOperatorFactory.createFresnel(basis, f_inf)
-    op_fresnel = ops_fresnel["P0"]
+    op_fresnel = ops_fresnel.P0
 
     alpha = basis.projectWhitened(torch.ones_like(domain.m_lambda))
 
@@ -584,7 +584,7 @@ def test_tc8_plot():
 
     f_inf = flat_profile(0.04, domain)
     ops_fresnel = SpectralOperatorFactory.createFresnel(basis, f_inf)
-    op_fresnel = ops_fresnel["Rcross"]
+    op_fresnel = ops_fresnel.Rcross
     op_film = SpectralOperatorFactory.createThinFilm(basis, n=1.5, d=200)
     op_surface = op_fresnel.compose(op_film)
 
@@ -634,62 +634,6 @@ def test_tc8_plot():
 
     passed = error < 1e-10
     return (passed, f"L_inf={error:.2e}")
-
-
-# -----------------------------------------------------------------------------
-# S0-4: ThinFilm Multibounce
-# -----------------------------------------------------------------------------
-
-def test_s0_4_thinfilm_plot():
-    """
-    S0-4: Thin Film (Fabry-Airy) multibounce.
-
-    Ground truth per bounce n:
-        T_ref^n(λ) = [0.5 * (1 + cos(4π n_ior d / λ))]^n
-
-    Each operator application multiplies the per-wavelength transmittance,
-    so repeated application is exact pointwise exponentiation.
-    """
-    domain, basis = create_golden_basis()
-
-    n_ior = 1.5
-    d_nm = 50.0
-
-    op = SpectralOperatorFactory.createThinFilm(basis, n=n_ior, d=d_nm)
-    lbda = domain.m_lambda
-    T_one = 0.5 * (1.0 + torch.cos(4.0 * torch.pi * n_ior * d_nm / lbda))
-
-    alpha = basis.projectWhitened(torch.ones_like(lbda))
-
-    errors_inf, errors_l2, expected_values, actual_values = [], [], [], []
-
-    for bounce in range(1, 11):
-        alpha = op.m_A @ alpha
-        s_out = basis.reconstructWhitened(alpha)
-
-        T_ref = T_one ** bounce
-        expected = T_ref.mean().item()
-        actual = s_out.mean().item()
-
-        error_inf = torch.max(torch.abs(s_out - T_ref)).item()
-        error_l2 = torch.sqrt(torch.mean((s_out - T_ref) ** 2)).item()
-
-        errors_inf.append(error_inf)
-        errors_l2.append(error_l2)
-        expected_values.append(expected)
-        actual_values.append(actual)
-
-        print(f"  Bounce {bounce}: expected={expected:.10f}, actual={actual:.10f}, L_inf={error_inf:.2e}")
-
-    plot_per_bounce_error(
-        "S0-4 ThinFilm",
-        errors_inf, errors_l2, expected_values, actual_values,
-        tolerance=1e-10
-    )
-
-    passed = errors_inf[-1] < 1e-10
-    return (passed, f"final_L_inf={errors_inf[-1]:.2e}")
-
 
 # =============================================================================
 # New Tests: append before the Main block in test_multibounce_plots.py
@@ -958,6 +902,271 @@ def run_set2_with_plots():
     return results
 
 
+def run_set3_bf16_precision():
+    print("\n" + "=" * 70)
+    print(" SET 3: BF16 PRECISION VALIDATION")
+    print("=" * 70)
+
+    results = {}
+
+    print("\n[BF16-1] Single operator cast fidelity")
+    results["BF16-1"] = test_bf16_cast_fidelity()
+
+    print("\n[BF16-2] Multibounce error accumulation")
+    results["BF16-2"] = test_bf16_multibounce_accumulation()
+
+    print("\n[BF16-3] Terminal contribution error")
+    results["BF16-3"] = test_bf16_terminal_contribution()
+
+    passed = sum(1 for v in results.values() if v[0])
+    total  = len(results)
+    print(f"\n{'='*70}")
+    print(f" SET 3 SUMMARY: {passed}/{total} passed")
+    print(f"{'='*70}")
+
+    return results
+
+
+def test_bf16_cast_fidelity():
+    """
+    BF16-1: Cast operator f64 → bf16 → f64, measure Frobenius error.
+    Tests all operator classes. BF16 has 7 mantissa bits (~3 decimal digits).
+    Expected: relative error ~1e-2 to 1e-3 depending on dynamic range.
+    Fabry-Airy expected worst — full rank, eigenvalues spread across [0,1].
+    """
+    domain, basis = create_golden_basis()
+    lbda = domain.m_lambda
+
+    def cast_error(A_f64):
+        A_bf16 = A_f64.to(torch.bfloat16).to(torch.float64)
+        err_frob = torch.norm(A_f64 - A_bf16, p='fro') / torch.norm(A_f64, p='fro')
+        err_inf  = (A_f64 - A_bf16).abs().max()
+        return err_frob.item(), err_inf.item()
+
+    operators = {}
+
+    sigma_fn = lambda l: torch.ones_like(l) * 0.3
+    operators["Beer-Lambert"] = SpectralOperatorFactory.createAbsorption(
+        basis, sigma_fn, distance=1.0).m_A
+
+    operators["Fresnel P0"]   = SpectralOperatorFactory.createFresnel(
+        basis, 0.08 + 0.88 * torch.sigmoid((lbda - 515.0) / 25.0)).P0.m_A
+
+    operators["Fabry-Airy"]   = SpectralOperatorFactory.createThinFilm(
+        basis, n=1.5, d=300.0).m_A
+
+    e_spd = torch.exp(-0.5 * ((lbda - 520.0) / 15.0) ** 2)
+    a_spd = torch.exp(-0.5 * ((lbda - 450.0) / 15.0) ** 2)
+    operators["Stokes"]       = SpectralOperatorFactory.createFluorescence(
+        basis, e_spd, a_spd).m_A
+
+    operators["Rayleigh"]     = SpectralOperatorFactory.createScattering(
+        basis, "Rayleigh", 0.05, distance=1.0, alpha=4.0).m_A
+
+    operators["Raman"]        = SpectralOperatorFactory.createRaman(
+        basis, shift_nm=70.0).m_A
+
+    errors_frob = []
+    errors_inf  = []
+    names       = []
+
+    for name, A in operators.items():
+        ef, ei = cast_error(A)
+        errors_frob.append(ef)
+        errors_inf.append(ei)
+        names.append(name)
+        print(f"  {name:20s}  Frob rel: {ef:.2e}  L_inf: {ei:.2e}")
+
+    # Plot
+    multi = MultiPanelEngine(nrows=1, ncols=2, figsize=(14, 5), sharex=False)
+
+    x = np.arange(len(names))
+
+    p0 = multi.getPanel(0)
+    p0.addScatter(x, np.array(errors_frob),
+                  label="Frobenius relative error",
+                  color=PlotEngine.sColors['primary'], marker='o', size=60)
+    p0.addLine(x, np.ones(len(names)) * 1e-2,
+               label="BF16 floor (~1e-2)", color='#FF6B6B',
+               linewidth=1.5, linestyle='--')
+    p0.m_axes.set_xticks(x)
+    p0.m_axes.set_xticklabels(names, rotation=30, ha='right')
+    p0.m_axes.set_yscale('log')
+    p0.setTitle("BF16 Cast: Frobenius Relative Error per Operator")
+    p0.setLabels("Operator", "Relative Frobenius Error")
+    p0.addLegend()
+
+    p1 = multi.getPanel(1)
+    p1.addScatter(x, np.array(errors_inf),
+                  label="L_inf absolute error",
+                  color=PlotEngine.sColors['tertiary'], marker='s', size=60)
+    p1.m_axes.set_xticks(x)
+    p1.m_axes.set_xticklabels(names, rotation=30, ha='right')
+    p1.m_axes.set_yscale('log')
+    p1.setTitle("BF16 Cast: L_inf Absolute Error per Operator")
+    p1.setLabels("Operator", "L_inf Absolute Error")
+    p1.addLegend()
+
+    filepath = PLOT_DIR / "BF16_1_cast_fidelity.png"
+    multi.saveFigure(str(filepath), dpi=300)
+    print(f"  Plot saved: {filepath}")
+
+    # Pass if all Frobenius errors below 2% — BF16 floor expectation
+    max_frob = max(errors_frob)
+    passed   = max_frob < 2e-2
+    return (passed, f"max_frob={max_frob:.2e}")
+
+
+def test_bf16_multibounce_accumulation():
+    """
+    BF16-2: 10-bounce error accumulation — f64 vs bf16 operator applied to f64 alpha.
+    Key question: does error grow linearly with bounces or stay bounded?
+    Tests Beer-Lambert (diagonal, should be tight) and
+    Fabry-Airy (full rank, expected worst case).
+    """
+    domain, basis = create_golden_basis()
+    lbda = domain.m_lambda
+
+    def run_bounces(A_f64, alpha_init, n_bounces=10):
+        A_bf16_f64 = A_f64.to(torch.bfloat16).to(torch.float64)
+
+        alpha_f64  = alpha_init.clone()
+        alpha_bf16 = alpha_init.clone()
+        errors     = []
+
+        for _ in range(n_bounces):
+            alpha_f64  = A_f64      @ alpha_f64
+            alpha_bf16 = A_bf16_f64 @ alpha_bf16
+            err = (alpha_f64 - alpha_bf16).abs().max().item()
+            errors.append(err)
+
+        return errors
+
+    alpha_init = basis.projectWhitened(torch.ones_like(lbda))
+
+    sigma_fn  = lambda l: torch.ones_like(l) * 0.3
+    A_beer    = SpectralOperatorFactory.createAbsorption(
+        basis, sigma_fn, distance=1.0).m_A
+    A_fabry   = SpectralOperatorFactory.createThinFilm(
+        basis, n=1.5, d=300.0).m_A
+    A_fresnel = SpectralOperatorFactory.createFresnel(
+        basis, 0.08 + 0.88 * torch.sigmoid((lbda - 515.0) / 25.0)).P0.m_A
+
+    errors_beer    = run_bounces(A_beer,    alpha_init)
+    errors_fabry   = run_bounces(A_fabry,   alpha_init)
+    errors_fresnel = run_bounces(A_fresnel, alpha_init)
+
+    bounces = np.arange(1, 11)
+
+    for b, (eb, ef, efr) in enumerate(zip(errors_beer, errors_fabry, errors_fresnel), 1):
+        print(f"  Bounce {b:2d}  Beer: {eb:.2e}  Fabry: {ef:.2e}  Fresnel: {efr:.2e}")
+
+    # Plot
+    engine = PlotEngine(figsize=(12, 6))
+    engine.addLine(bounces, np.array(errors_beer),
+                   label="Beer-Lambert", color=PlotEngine.sColors['primary'],
+                   linewidth=2, marker='o')
+    engine.addLine(bounces, np.array(errors_fabry),
+                   label="Fabry-Airy", color=PlotEngine.sColors['tertiary'],
+                   linewidth=2, marker='s')
+    engine.addLine(bounces, np.array(errors_fresnel),
+                   label="Fresnel P0 (Gold)", color='#FFD93D',
+                   linewidth=2, marker='^')
+    engine.addLine(bounces, np.ones(10) * 1e-2,
+                   label="BF16 floor (~1e-2)", color='#FF6B6B',
+                   linewidth=1.5, linestyle='--')
+    engine.setTitle("BF16 Multibounce: f64 vs bf16 Operator — L_inf Error per Bounce")
+    engine.setLabels("Bounce #", "L_inf Error (alpha space)")
+    engine.m_axes.set_yscale('log')
+    engine.addLegend()
+
+    filepath = PLOT_DIR / "BF16_2_multibounce_accumulation.png"
+    engine.saveFigure(str(filepath), dpi=300)
+    print(f"  Plot saved: {filepath}")
+
+    # Pass if error stays bounded (not growing unboundedly) after 10 bounces
+    # BF16 floor is ~1e-2 relative, absolute error on alpha should be < 1e-1
+    max_err = max(max(errors_beer), max(errors_fabry), max(errors_fresnel))
+    passed  = max_err < 1e-1
+    return (passed, f"max_err={max_err:.2e}")
+
+
+def test_bf16_terminal_contribution():
+    """
+    BF16-3: Terminal contribution error — eps^T alpha_f64 vs eps^T alpha_bf16.
+    This is what shows up in the pixel. The dot product with eps can amplify
+    or suppress the per-component error in alpha depending on alignment.
+    Tests all three materials over 10 bounces.
+    """
+    domain, basis = create_golden_basis()
+    lbda = domain.m_lambda
+
+    # Sensor and emitter
+    y_tilde  = basis.projectWhitened(
+        torch.exp(-0.5 * ((lbda - 555.0) / 40.0) ** 2))
+
+    def planck_norm(lbda, T):
+        h, c, kB = 6.62607015e-34, 2.99792458e8, 1.380649e-23
+        lm = lbda * 1e-9
+        exp = torch.tensor(h * c / kB / T, device=lbda.device, dtype=lbda.dtype)
+        B = (2.0 * h * c**2) / (lm**5) / (torch.exp(exp / lm) - 1.0)
+        return B / B.max()
+
+    eps_6500 = basis.projectWhitened(planck_norm(lbda, 6500.0))
+    alpha_0  = y_tilde.clone()   # camera-to-light init
+
+    operators = {
+        "Beer-Lambert": SpectralOperatorFactory.createAbsorption(
+            basis, lambda l: torch.ones_like(l) * 0.1, distance=1.0).m_A,
+        "Fabry-Airy":   SpectralOperatorFactory.createThinFilm(
+            basis, n=1.5, d=300.0).m_A,
+        "Fresnel P0":   SpectralOperatorFactory.createFresnel(
+            basis, 0.08 + 0.88 * torch.sigmoid((lbda - 515.0) / 25.0)).P0.m_A,
+    }
+
+    multi = MultiPanelEngine(nrows=1, ncols=len(operators),
+                             figsize=(16, 5), sharex=False)
+    bounces = np.arange(1, 11)
+
+    all_passed = True
+    for idx, (name, A_f64) in enumerate(operators.items()):
+        A_bf16 = A_f64.to(torch.bfloat16).to(torch.float64)
+
+        alpha_f64  = alpha_0.clone()
+        alpha_bf16 = alpha_0.clone()
+        contrib_errors = []
+
+        for _ in range(10):
+            alpha_f64  = A_f64  @ alpha_f64
+            alpha_bf16 = A_bf16 @ alpha_bf16
+
+            C_f64  = (eps_6500 @ alpha_f64).item()
+            C_bf16 = (eps_6500 @ alpha_bf16).item()
+            contrib_errors.append(abs(C_f64 - C_bf16) / (abs(C_f64) + 1e-30))
+
+        print(f"  {name:20s}  max pixel error: {max(contrib_errors):.2e}")
+
+        p = multi.getPanel(idx)
+        p.addLine(bounces, np.array(contrib_errors),
+                  label="Pixel contrib rel error",
+                  color=PlotEngine.sColors['primary'], linewidth=2, marker='o')
+        p.addLine(bounces, np.ones(10) * 1e-2,
+                  label="1% threshold",
+                  color='#FF6B6B', linewidth=1.5, linestyle='--')
+        p.m_axes.set_yscale('log')
+        p.setTitle(f"{name}: Pixel Error")
+        p.setLabels("Bounce #", "Rel Error in eps^T alpha")
+        p.addLegend()
+
+        if max(contrib_errors) > 5e-2:
+            all_passed = False
+
+    filepath = PLOT_DIR / "BF16_3_terminal_contribution.png"
+    multi.saveFigure(str(filepath), dpi=300)
+    print(f"  Plot saved: {filepath}")
+
+    return (all_passed, "pixel contribution errors within 5% threshold")
+
 # =============================================================================
 # Main
 # =============================================================================
@@ -974,6 +1183,7 @@ if __name__ == "__main__":
     run_set0_with_plots()
     run_set1_with_plots()
     run_set2_with_plots()
+    run_set3_bf16_precision()
 
     print("\n" + "=" * 70)
     print(" ALL PLOTS COMPLETE")

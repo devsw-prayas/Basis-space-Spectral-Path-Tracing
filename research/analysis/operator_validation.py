@@ -91,7 +91,7 @@ op_beer      = SpectralOperatorFactory.createAbsorption(basis, sigma_a, distance
 
 f_inf_const  = torch.full_like(lbda, 0.04)
 ops_f        = SpectralOperatorFactory.createFresnel(basis, f_inf_const)
-op_p0, op_psq, op_rc, op_qc = ops_f["P0"], ops_f["Psq"], ops_f["Rcross"], ops_f["Qcomp"]
+op_p0, op_psq, op_rc, op_qc = ops_f.P0, ops_f.Psq, ops_f.Rcross, ops_f.Qcomp
 
 op_film      = SpectralOperatorFactory.createThinFilm(basis, n=1.5, d=300.0)
 
@@ -156,8 +156,8 @@ styleAx(ax, "2. Psq ≈ P0² Eigenvalues (metal k₀=2)")
 
 f_metal2   = metalFresnel(k0=2.0)
 ops_metal2 = SpectralOperatorFactory.createFresnel(basis, f_metal2)
-ev_p0_m    = torch.linalg.eigvalsh(ops_metal2["P0"].m_A).cpu().float().numpy()
-ev_psq_m   = torch.linalg.eigvalsh(ops_metal2["Psq"].m_A).cpu().float().numpy()
+ev_p0_m    = torch.linalg.eigvalsh(ops_metal2.P0.m_A).cpu().float().numpy()
+ev_psq_m   = torch.linalg.eigvalsh(ops_metal2.Psq.m_A).cpu().float().numpy()
 
 # Sort by P0 eigenvalue descending
 order      = np.argsort(ev_p0_m)[::-1]
@@ -370,8 +370,8 @@ def matCorr(A: torch.Tensor, B: torch.Tensor) -> float:
 for k0 in K0_VALS:
     f_val  = metalFresnel(k0)
     ops_k  = SpectralOperatorFactory.createFresnel(basis, f_val)
-    align_rc.append(matCorr(ops_k["P0"].m_A, ops_k["Rcross"].m_A))
-    align_ps.append(matCorr(ops_k["P0"].m_A, ops_k["Psq"].m_A))
+    align_rc.append(matCorr(ops_k.P0.m_A, ops_k.Rcross.m_A))
+    align_ps.append(matCorr(ops_k.P0.m_A, ops_k.Psq.m_A))
 
 align_rc_np = np.array(align_rc)
 align_ps_np = np.array(align_ps)

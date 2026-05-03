@@ -70,7 +70,8 @@ class PlotEngine:
                 color: Optional[str] = None,
                 linewidth: float = 1.5,
                 linestyle: str = '-',
-                alpha: float = 1.0) -> None:
+                alpha: float = 1.0,
+                marker = None) -> None:
         if color is None:
             colorCycle = [self.sColors['primary'],
                           self.sColors['secondary'],
@@ -79,7 +80,7 @@ class PlotEngine:
             self.m_lineCounter += 1
 
         self.m_axes.plot(xData, yData, label=label, color=color,
-                         linewidth=linewidth, linestyle=linestyle, alpha=alpha)
+                         linewidth=linewidth, linestyle=linestyle, alpha=alpha, marker=marker)
         self.m_axes.margins(x=0.01)
 
     def addScatter(self, xData: np.ndarray, yData: np.ndarray,
