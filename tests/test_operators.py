@@ -13,7 +13,7 @@ def testOperators():
     # Golden Config: Family 0, K=8, N=11, Scaling 1 (Linear)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # SUB-NANOMETER RESOLUTION: 16,384 samples (~0.027nm delta)
-    domain = SpectralDomain(380, 830, 16384, device=device, dtype=torch.float64)
+    domain = SpectralDomain(380, 830, 4096, device=device, dtype=torch.float64)
     
     K, N = 8, 11
     centers = generateTopology(0, K, margin=0.0)
@@ -117,5 +117,74 @@ def testOperators():
     print(" VALIDATION COMPLETE")
     print("=" * 63)
 
+    # sharp absorption — e.g. narrow band absorber
+    sigmaA = lambda lbda: 10.0 * torch.exp(-torch.pow((lbda - 550.0) / 20.0, 2))
+    op = SpectralOperatorFactory.createAbsorption(basis, sigmaA, distance=1.0)
+
+    A = op.m_A
+    diag_energy = torch.diag(A).pow(2).sum()
+    total_energy = A.pow(2).sum()
+    off_diag_fraction = 1.0 - (diag_energy / total_energy)
+    print(f"off-diagonal energy fraction: {off_diag_fraction:.6f}")
+
+    sigmaS_base = 0.01
+    alpha = 4.0
+    sigmaS = lambda lbda: sigmaS_base * (lbda / 550.0) ** (-alpha)
+    op = SpectralOperatorFactory.createScattering(basis, "Rayleigh", sigmaS_base, 1.0, alpha)
+    print(op.m_A.diag()[:5])
+    print(op.m_A[0, :5])
+
+    # simple test — gaussian emission at 650nm, gaussian absorption at 450nm
+    lbda = basis.m_domain.m_lambda
+    e = torch.exp(-((lbda - 650.0) / 30.0).pow(2))
+    a = torch.exp(-((lbda - 450.0) / 30.0).pow(2))
+    op = SpectralOperatorFactory.createFluorescence(basis, e, a)
+
+    # check rank
+    U, S, V = torch.linalg.svd(op.m_A)
+    print("singular values[:5]:", S[:5])
+
+    # check first row and diagonal
+    print("diag[:5]:", op.m_A.diag()[:5])
+    print("row0[:5]:", op.m_A[0, :5])
+    U, S, V = torch.linalg.svd(op.m_A)
+    print("singular values[:5]:", S[:5])
+
+    op = SpectralOperatorFactory.createThinFilm(basis, n=1.33, d=300.0)
+    print(op.m_A.diag()[:5])
+    print(op.m_A[0, :5])
+
+    lbda = basis.m_domain.m_lambda
+    F_inf = 0.1 + 0.8 * ((lbda - 380.0) / 450.0) ** 2
+    ops = SpectralOperatorFactory.createFresnel(basis, F_inf)
+
+    A_normal = SpectralOperatorFactory.assembleFresnel(ops, 1.0, basis)
+    print("normal diag[:5]:", A_normal.m_A.diag()[:5])
+
+    A_grazing = SpectralOperatorFactory.assembleFresnel(ops, 0.0, basis)
+    print("grazing diag[:5]:", A_grazing.m_A.diag()[:5])
+
+    ops = SpectralOperatorFactory.createDispersion(basis, 0.0, 0.0, 0.0)
+
+    # partition of unity
+    total = sum(op.m_A for op in ops)
+    print("partition diag[:5]:", total.diag()[:5])
+    print("partition row0[1:5]:", total[0, 1:5])
+
+    # lobe dominance
+    print("lobe 0 diag[:5]:", ops[0].m_A.diag()[:5])
+    print("lobe 7 diag[83:]:", ops[7].m_A.diag()[83:])
+
+    op = SpectralOperatorFactory.createRaman(basis, shift_nm=70.0, sigmaRaman=10.0)
+    print("diagonal[:5]:", op.m_A.diag()[:5])
+    print("row0[:10]:", op.m_A[0, :10])
+    max_idx = op.m_A.abs().argmax()
+    i, j = max_idx // 88, max_idx % 88
+    print(f"max element: [{i}, {j}] = {op.m_A[i, j]:.6f}")
+    print(f"offset from diagonal: {i - j}")
+
+
+
 if __name__ == "__main__":
     testOperators()
+

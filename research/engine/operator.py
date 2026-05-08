@@ -119,7 +119,7 @@ class SpectralOperatorFactory:
 
     @staticmethod
     def assembleFresnel(
-            fresnel_ops: Dict[str, "SpectralOperator"],
+            fresnel_ops: FresnelOps,
             cos_theta: float,
             basis: SpectralBasis
     ) -> "SpectralOperator":
@@ -137,7 +137,7 @@ class SpectralOperatorFactory:
         dtype = basis.m_basisRaw.dtype
 
         I_M = torch.eye(M, device=device, dtype=dtype)
-        A_assembled = (1.0 - t) * fresnel_ops.m_A + t * I_M
+        A_assembled = (1.0 - t) * fresnel_ops.P0.m_A + t * I_M
         return SpectralOperator(
             basis,
             A_assembled,
@@ -213,6 +213,9 @@ class SpectralOperatorFactory:
         sigmaRaman controls Raman linewidth (~10 nm typical).
         Note: allocates a transient (L×L) kernel — ~134 MB at L=4096 float64.
         """
+        print("weight sum =", basis.m_domain.m_weights.sum().item())
+        print("w[0] =", basis.m_domain.m_weights[0].item())
+        print("h =", (830 - 380) / (4096 - 1))
         B_mat, w, lbda = basis.m_basisRaw, basis.m_domain.m_weights, basis.m_domain.m_lambda
         device, dtype = lbda.device, lbda.dtype
 
@@ -227,6 +230,12 @@ class SpectralOperatorFactory:
         # 2D Galerkin: M_raw[i,j] = Σ_{a,b} B[i,a] w_a K[a,b] w_b B[j,b]
         Bw = B_mat * w
         M_raw = Bw @ K_mat @ Bw.T
+
+        Bw = basis.m_basisRaw * basis.m_domain.m_weights
+        print("Bw[0,0] =", Bw[0, 0].item())
+        print("Bw[0,1] =", Bw[0, 1].item())
+        print("w[0] =", basis.m_domain.m_weights[0].item())
+        print("B[0,0] =", basis.m_basisRaw[0, 0].item())
 
         A_wht = SpectralOperatorFactory._createWhitenedFromRaw(basis, M_raw)
         return SpectralOperator(basis, A_wht, torch.zeros(basis.m_M, device=device, dtype=dtype))
