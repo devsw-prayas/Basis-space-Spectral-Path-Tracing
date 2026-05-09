@@ -41,6 +41,7 @@ centers = topologyTristimulus(K=3, lMin=L_MIN, lMax=L_MAX)  # [450, 550, 650]
 sigma   = (L_MAX - L_MIN) / 3.0                              # ~150 nm — wide lobes
 
 basis   = GHGSFBasis(domain=domain, centers=centers, sigma=sigma, order=1)
+basis.buildCholesky()
 
 print(f"=== RGB Hypothesis Leakage Test ===")
 print(f"K={basis.m_K}  N={basis.m_N}  M={basis.m_M}")

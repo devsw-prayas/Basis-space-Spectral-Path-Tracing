@@ -26,6 +26,7 @@ class SpectralBasis(ABC):
         B = self.m_basisRaw
         w = self.m_domain.m_weights
         self.m_gram = (B * w) @ B.T
+        self.m_gram = 0.5 * (self.m_gram + self.m_gram.T)
 
     def buildCholesky(self):
         self.m_chol = torch.linalg.cholesky(self.m_gram)
@@ -96,7 +97,6 @@ class GHGSFBasis(SpectralBasis):
 
         self.buildBasis()
         self.buildGram()
-        self.buildCholesky()
 
     def buildBasis(self):
         lbda    = self.m_domain.m_lambda
@@ -141,7 +141,7 @@ class GHGSFDualDomainBasis(SpectralBasis):
         self,
         domain: SpectralDomain,
         centers: List[float],
-        numWide: int,
+        wideIndices: List[int],
         wideSigmaMin: float,
         wideSigmaMax: Optional[float],
         wideScaleType: ScaleType = "sqrt",
@@ -160,11 +160,12 @@ class GHGSFDualDomainBasis(SpectralBasis):
         self.m_N = order
         self.m_M = self.m_K * self.m_N
 
-        if numWide > self.m_K:
-            raise ValueError("numWide cannot exceed number of centers.")
+        wideSet = set(wideIndices)
+        if any(i < 0 or i >= self.m_K for i in wideSet):
+            raise ValueError("wideIndices contains out-of-range index.")
 
-        self.m_numWide   = numWide
-        self.m_numNarrow = self.m_K - numWide
+        self.m_wideIndices   = list(wideIndices)
+        self.m_narrowIndices = [i for i in range(self.m_K) if i not in wideSet]
 
         self.m_wideSigmaMin  = wideSigmaMin
         self.m_wideSigmaMax  = wideSigmaMax if wideSigmaMax is not None else wideSigmaMin
@@ -178,7 +179,6 @@ class GHGSFDualDomainBasis(SpectralBasis):
 
         self.buildBasis()
         self.buildGram()
-        self.buildCholesky()
 
     def _sigmaSchedule(
         self,
@@ -222,9 +222,13 @@ class GHGSFDualDomainBasis(SpectralBasis):
             self.m_narrowScaleType, self.m_narrowGamma, device, dtype
         )
 
-        sigmaMatrix = torch.empty(K, N, device=device, dtype=dtype)
-        sigmaMatrix[:self.m_numWide, :]  = wideSigmas.unsqueeze(0)
-        sigmaMatrix[self.m_numWide:, :]  = narrowSigmas.unsqueeze(0)
+        sigmaMatrix  = torch.empty(K, N, device=device, dtype=dtype)
+        wideTensor   = torch.tensor(self.m_wideIndices,   device=device, dtype=torch.long)
+        narrowTensor = torch.tensor(self.m_narrowIndices, device=device, dtype=torch.long)
+        if wideTensor.numel() > 0:
+            sigmaMatrix[wideTensor, :]   = wideSigmas.unsqueeze(0)
+        if narrowTensor.numel() > 0:
+            sigmaMatrix[narrowTensor, :] = narrowSigmas.unsqueeze(0)
 
         lbdaExp    = lbda.unsqueeze(0).unsqueeze(0)
         centersExp = self.m_centers.unsqueeze(1).unsqueeze(2)
@@ -245,4 +249,6 @@ class GHGSFDualDomainBasis(SpectralBasis):
         normsTiled = norms.repeat(K)
 
         gaussian = torch.exp(-0.5 * xFlat ** 2)
-        self.m_basisRaw = (HDiag * gaussian) / normsTiled.unsqueeze(1)
+        sigma_flat = sigmaMatrix.reshape(K * N, 1)
+
+        self.m_basisRaw = ((HDiag * gaussian) / normsTiled.unsqueeze(1)) / torch.sqrt(sigma_flat)

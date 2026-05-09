@@ -25,13 +25,14 @@ def testRefactor():
     basis = GHGSFDualDomainBasis(
         domain=domain,
         centers=centers,
-        numWide=4,
+        wideIndices=list(range(4)),
         wideSigmaMin=10.0,
         wideSigmaMax=15.0,
         narrowSigmaMin=5.0,
         narrowSigmaMax=8.0,
         order=6
     )
+    basis.buildCholesky()
 
     print(f"Basis size M: {basis.m_M}")
 

@@ -60,13 +60,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 domain = SpectralDomain(380.0, 830.0, 4096, device=device, dtype=torch.float64)
 
 K, N = 8, 11
-centers = generateTopology(0, K, margin=0.0)
+centers, _ = generateTopology(0, K, margin=0.0)
 basis = GHGSFDualDomainBasis(
-    domain=domain, centers=centers, numWide=K // 2,
+    domain=domain, centers=centers, wideIndices=list(range(K // 2)),
     wideSigmaMin=9.5,  wideSigmaMax=11.5,  wideScaleType="linear",
     narrowSigmaMin=7.0, narrowSigmaMax=9.0, narrowScaleType="linear",
     order=N
 )
+basis.buildCholesky()
 
 lbda = domain.m_lambda.cpu().numpy()
 M    = basis.m_M
@@ -238,7 +239,7 @@ ax.set_facecolor(PANEL)
 ax.set_title("Cauchy — per-lobe D65 decomposition", color=SPINE, fontsize=8, pad=4)
 ax.tick_params(colors=GREY, labelsize=6)
 ax.plot(lbda, d65_norm, color=GREY, linewidth=1.0, linestyle="--", alpha=0.5, label="D65")
-lobe_centers = generateTopology(0, K, margin=0.0)
+lobe_centers, _ = generateTopology(0, K, margin=0.0)
 for k, op_k in enumerate(ops_cauchy):
     alpha_k = op_k.m_A @ alpha_d65
     s_k     = basis.reconstructWhitened(alpha_k).cpu().float().numpy()

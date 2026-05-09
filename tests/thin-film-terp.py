@@ -80,7 +80,7 @@ print(f"Building GHGSFDualDomainBasis  K={K}  N={N_ORDER}  M={K*N_ORDER}")
 basis = GHGSFDualDomainBasis(
     domain        = domain,
     centers       = centers,
-    numWide       = NUM_WIDE,
+    wideIndices   = list(range(NUM_WIDE)),
     wideSigmaMin  = WIDE_SIGMA_MIN,
     wideSigmaMax  = WIDE_SIGMA_MAX,
     wideScaleType = WIDE_SCALE,
@@ -89,6 +89,7 @@ basis = GHGSFDualDomainBasis(
     narrowScaleType = NARROW_SCALE,
     order         = N_ORDER
 )
+basis.buildCholesky()
 M = basis.m_M
 print(f"  M={M}  Gram deviation from I: ", end="")
 G_wht = (basis.m_basisWhitened * domain.m_weights) @ basis.m_basisWhitened.T

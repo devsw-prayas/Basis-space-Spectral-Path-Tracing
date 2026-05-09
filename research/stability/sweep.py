@@ -41,7 +41,7 @@ CHECKPOINT_INTERVAL = 50_000   # flush every N configs
 # ============================================================
 
 def buildSweepConfigs(device=torch.device("cpu")) -> torch.Tensor:
-    families = torch.arange(5, device=device, dtype=torch.int64)
+    families = torch.arange(7, device=device, dtype=torch.int64)
     lobes    = torch.arange(4, 13, device=device, dtype=torch.int64)
     orders   = torch.arange(4, 13, device=device, dtype=torch.int64)
     scaling  = torch.arange(4, device=device, dtype=torch.int64)
@@ -147,11 +147,12 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
     print("Initializing Global Spectral Domain (4096 samples)...")
     domain = SpectralDomain(380.0, 830.0, 4096, device=device, dtype=dtype)
 
-    configs = buildSweepConfigs(device)
+    configs = buildSweepConfigs()  # keep on CPU — metrics tensor is CPU, cat must match
     total   = configs.shape[0]
 
-    os.makedirs("results", exist_ok=True)
-    outputFile = os.path.join("results", outputFile)
+    _resultsDir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+    os.makedirs(_resultsDir, exist_ok=True)
+    outputFile = os.path.join(_resultsDir, outputFile)
     allColumns = CONFIG_COLUMNS + METRIC_COLUMNS
 
     # Resume: count rows already written across existing chunk files
@@ -174,19 +175,29 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
         familyId, K, order, scalingId, wMin, wMax, nMin, nMax, margin = cfg
 
         try:
-            centers = generateTopology(int(familyId), int(K), margin=margin)
+            centers, wideIndices = generateTopology(int(familyId), int(K), margin=margin)
             basis = GHGSFDualDomainBasis(
                 domain=domain,
                 centers=centers,
-                numWide=int(K) // 2,
+                wideIndices=wideIndices,
                 wideSigmaMin=wMin,  wideSigmaMax=wMax,
                 wideScaleType=SCALING_ID_MAP[int(scalingId)],
                 narrowSigmaMin=nMin, narrowSigmaMax=nMax,
                 narrowScaleType=SCALING_ID_MAP[int(scalingId)],
                 order=int(order)
             )
-            metrics = computeMetrics(basis, domain)
-            buffer.append(torch.cat([configs[i], metrics]))
+
+            ev  = torch.linalg.eigvalsh(basis.m_gram)
+            eps = 2.0 * torch.finfo(dtype).eps
+            if ev[0].item() < eps:
+                failRow = torch.zeros(len(allColumns), dtype=torch.float64)
+                failRow[:len(CONFIG_COLUMNS)] = configs[i]
+                failRow[-2:] = 1.0
+                buffer.append(failRow)
+            else:
+                basis.buildCholesky()
+                metrics = computeMetrics(basis, domain)
+                buffer.append(torch.cat([configs[i], metrics]))
 
         except Exception:
             failRow = torch.zeros(len(allColumns), dtype=torch.float64)

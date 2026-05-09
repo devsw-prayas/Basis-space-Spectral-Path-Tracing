@@ -36,15 +36,16 @@ PLOT_DIR.mkdir(parents=True, exist_ok=True)
 def create_golden_basis(num_samples=DEFAULT_SAMPLES):
     """Create the golden config basis for testing."""
     domain = SpectralDomain(380, 830, num_samples, device=DEVICE, dtype=DTYPE)
-    centers = generateTopology(0, K, margin=MARGIN)
+    centers, _ = generateTopology(0, K, margin=MARGIN)
     basis = GHGSFDualDomainBasis(
         domain=domain,
         centers=centers,
-        numWide=K//2,
+        wideIndices=list(range(K // 2)),
         wideSigmaMin=9.5, wideSigmaMax=11.5, wideScaleType="linear",
         narrowSigmaMin=7.0, narrowSigmaMax=9.0, narrowScaleType="linear",
         order=N
     )
+    basis.buildCholesky()
     return domain, basis
 
 

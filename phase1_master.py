@@ -16,8 +16,9 @@ def runPhase1Master():
     print(" SPECTRAL BASIS ENGINE - PHASE 1 MASTER RUNNER")
     print("=" * 63)
 
-    results_file = "results/stability_results.parquet"
-    
+    results_file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "research", "stability", "results", "stability_results.parquet")
+
     # Stage 1: Sweep (Data Generation)
     if not os.path.exists(results_file):
         print("\n[STAGE 1] Starting Stability Sweep (Data Generation)...")

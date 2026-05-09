@@ -46,15 +46,16 @@ domain = SpectralDomain(380, 830, 4096, device=device, dtype=dtype)
 lbda = domain.m_lambda
 
 K, N = 8, 11
-centers = generateTopology(0, K, margin=0.0)
+centers, _ = generateTopology(0, K, margin=0.0)
 basis = GHGSFDualDomainBasis(
     domain=domain,
     centers=centers,
-    numWide=K // 2,
+    wideIndices=list(range(K // 2)),
     wideSigmaMin=9.5, wideSigmaMax=11.5, wideScaleType="linear",
     narrowSigmaMin=7.0, narrowSigmaMax=9.0, narrowScaleType="linear",
     order=N
 )
+basis.buildCholesky()
 
 M = basis.m_M
 I_M = torch.eye(M, device=device, dtype=dtype)

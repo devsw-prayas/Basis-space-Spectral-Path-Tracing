@@ -32,6 +32,7 @@ sigma   = 100.0
 order   = 3
 
 basis = GHGSFBasis(domain=domain, centers=centers, sigma=sigma, order=order)
+basis.buildCholesky()
 
 print("=== RGB Isomorphism Test ===")
 print(f"Centers : {centers} nm")
