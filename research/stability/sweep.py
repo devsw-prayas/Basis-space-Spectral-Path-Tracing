@@ -30,7 +30,7 @@ METRIC_COLUMNS = []
 for m in CORE_METRICS: METRIC_COLUMNS.append(f"raw_{m}")
 for m in CORE_METRICS: METRIC_COLUMNS.append(f"wht_{m}")
 METRIC_COLUMNS.append("rawSpdFail")
-METRIC_COLUMNS.append("whtSpdFail")
+METRIC_COLUMNS.append("rescued")
 
 SCALING_ID_MAP = {0: "constant", 1: "linear", 2: "sqrt", 3: "power"}
 
@@ -86,9 +86,12 @@ def computeMetrics(
     L = basis.m_chol
     LiG = torch.linalg.solve_triangular(L, G_raw, upper=False)
     G_wht = torch.linalg.solve_triangular(L, LiG.T, upper=False).T
-    wht_metrics, wht_fail = calculateMatrixMetrics(G_wht)
+    wht_metrics, _ = calculateMatrixMetrics(G_wht)
 
-    return torch.tensor(raw_metrics + wht_metrics + [raw_fail, wht_fail], dtype=torch.float64)
+    fp32Limit = 1.0 / torch.finfo(torch.float32).eps
+    rescued = 1.0 if (raw_fail == 0.0 and raw_metrics[2] > fp32Limit) else 0.0
+
+    return torch.tensor(raw_metrics + wht_metrics + [raw_fail, rescued], dtype=torch.float64)
 
 def calculateMatrixMetrics(G: torch.Tensor) -> Tuple[List[float], float]:
     ev = torch.linalg.eigvalsh(G)
@@ -192,7 +195,7 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
             if ev[0].item() < eps:
                 failRow = torch.zeros(len(allColumns), dtype=torch.float64)
                 failRow[:len(CONFIG_COLUMNS)] = configs[i]
-                failRow[-2:] = 1.0
+                failRow[-2] = 1.0
                 buffer.append(failRow)
             else:
                 basis.buildCholesky()
@@ -202,7 +205,7 @@ def runStabilitySweep(outputFile: str = "stability_results.parquet"):
         except Exception:
             failRow = torch.zeros(len(allColumns), dtype=torch.float64)
             failRow[:len(CONFIG_COLUMNS)] = configs[i]
-            failRow[-2:] = 1.0
+            failRow[-2] = 1.0
             buffer.append(failRow)
 
         # Checkpoint flush

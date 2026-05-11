@@ -59,12 +59,12 @@ print("Initializing basis...")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 domain = SpectralDomain(380.0, 830.0, 4096, device=device, dtype=torch.float64)
 
-K, N = 8, 11
-centers, _ = generateTopology(0, K, margin=0.0)
+K, N = 8, 10
+centers, wideIndices = generateTopology(1, K, margin=0.0)
 basis = GHGSFDualDomainBasis(
-    domain=domain, centers=centers, wideIndices=list(range(K // 2)),
-    wideSigmaMin=9.5,  wideSigmaMax=11.5,  wideScaleType="linear",
-    narrowSigmaMin=7.0, narrowSigmaMax=9.0, narrowScaleType="linear",
+    domain=domain, centers=centers, wideIndices=wideIndices,
+    wideSigmaMin=6.5,  wideSigmaMax=8.5,  wideScaleType="linear",
+    narrowSigmaMin=7.5, narrowSigmaMax=8.0, narrowScaleType="linear",
     order=N
 )
 basis.buildCholesky()

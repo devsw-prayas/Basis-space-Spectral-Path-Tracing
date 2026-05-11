@@ -9,7 +9,6 @@ from research.stability.sweep import runStabilitySweep
 from research.stability.split_results import splitStabilityResults
 from research.stability.filter_spd import filterSpdSuccess
 from research.stability.plot_heatmaps import plotStabilityHeatmaps
-from research.stability.analyze_golden_zone import analyzeGoldenZone
 
 def runPhase1Master():
     print("=" * 63)
@@ -39,11 +38,6 @@ def runPhase1Master():
     print("\n[STAGE 4] Generating stability heatmaps...")
     for m in [0, 10, 20]:
         plotStabilityHeatmaps(m)
-
-    # Stage 5: Analysis
-    print("\n[STAGE 5] Identifying the Golden Zone candidates...")
-    for m in [0, 10, 20]:
-        analyzeGoldenZone(m)
 
     print("\n" + "=" * 63)
     print(" PHASE 1 COMPLETE: All research artifacts generated.")

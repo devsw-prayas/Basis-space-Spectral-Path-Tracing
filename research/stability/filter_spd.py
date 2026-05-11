@@ -16,11 +16,11 @@ def filterSpdSuccess(margin: int):
     print(f"\nFiltering Margin {margin} nm...")
     df = pd.read_parquet(inputFile)
     
-    # 1. Rescued Set (Raw Fail, Wht Success)
-    rescued = df[(df["rawSpdFail"] == 1.0) & (df["whtSpdFail"] == 0.0)].reset_index(drop=True)
-    
-    # 2. Naturally Stable Set (Raw Success)
-    naturally_stable = df[df["rawSpdFail"] == 0.0].reset_index(drop=True)
+    # 1. Rescued Set (passed SPD but raw basis ill-conditioned beyond fp32 limit)
+    rescued = df[df["rescued"] == 1.0].reset_index(drop=True)
+
+    # 2. Naturally Stable Set (passed SPD and raw basis within fp32 precision)
+    naturally_stable = df[(df["rawSpdFail"] == 0.0) & (df["rescued"] == 0.0)].reset_index(drop=True)
     
     # Save Rescued
     rescuedFile = f"results/stability_margin_{margin}_rescued.parquet"

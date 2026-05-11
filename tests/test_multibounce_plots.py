@@ -23,7 +23,7 @@ from research.plot.engine import PlotEngine, MultiPanelEngine
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DTYPE = torch.float64
-K, N = 8, 11
+K, N = 8, 10
 MARGIN = 0.0
 DEFAULT_SAMPLES = 16384
 RAMAN_SAMPLES = 4096
@@ -36,13 +36,13 @@ PLOT_DIR.mkdir(parents=True, exist_ok=True)
 def create_golden_basis(num_samples=DEFAULT_SAMPLES):
     """Create the golden config basis for testing."""
     domain = SpectralDomain(380, 830, num_samples, device=DEVICE, dtype=DTYPE)
-    centers, _ = generateTopology(0, K, margin=MARGIN)
+    centers, wideIndices = generateTopology(1, K, margin=MARGIN)
     basis = GHGSFDualDomainBasis(
         domain=domain,
         centers=centers,
-        wideIndices=list(range(K // 2)),
-        wideSigmaMin=9.5, wideSigmaMax=11.5, wideScaleType="linear",
-        narrowSigmaMin=7.0, narrowSigmaMax=9.0, narrowScaleType="linear",
+        wideIndices=wideIndices,
+        wideSigmaMin=6.5, wideSigmaMax=8.5, wideScaleType="linear",
+        narrowSigmaMin=7.5, narrowSigmaMax=8.0, narrowScaleType="linear",
         order=N
     )
     basis.buildCholesky()
